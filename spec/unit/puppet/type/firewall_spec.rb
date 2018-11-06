@@ -200,7 +200,7 @@ describe firewall do # rubocop:disable RSpec/MultipleDescribes
      :UNREACHABLE, :PROHIBIT, :THROW, :NAT, :XRESOLVE].each do |type|
       it "should accept #{addrtype} value #{type}" do
         resource[addrtype] = type
-        expect(resource[addrtype]).to eql type
+        expect(resource[addrtype]).to eql [type]
       end
     end
 

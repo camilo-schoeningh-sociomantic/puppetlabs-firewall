@@ -402,6 +402,20 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
       values = values.gsub(%r{-m comment --comment ([^"].*?)[ $]}, '')
       values.insert(ind, "-m comment --comment \"#{comments.join(';')}\" ")
     end
+    if values =~ %r{-m addrtype (!\s+)?--src-type}
+      values = values.gsub(%r{(!\s+)?--src-type (\S*)(\s--limit-iface-(in|out))?}, '--src-type \1\2\3')
+      ind = values.index('-m addrtype --src-type')
+      types = values.scan(%r{-m addrtype --src-type ((?:!\s+)?\S*(?: --limit-iface-(?:in|out))?)})
+      values = values.gsub(%r{-m addrtype --src-type ((?:!\s+)?\S*(?: --limit-iface-(?:in|out))?) ?}, '')
+      values.insert(ind, "-m addrtype --src-type \"#{types.join(';')}\" ")
+    end
+    if values =~ %r{-m addrtype (!\s+)?--dst-type}
+      values = values.gsub(%r{(!\s+)?--dst-type (\S*)(\s--limit-iface-(in|out))?}, '--dst-type \1\2\3')
+      ind = values.index('-m addrtype --dst-type')
+      types = values.scan(%r{-m addrtype --dst-type ((?:!\s+)?\S*(?: --limit-iface-(?:in|out))?)})
+      values = values.gsub(%r{-m addrtype --dst-type ((?:!\s+)?\S*(?: --limit-iface-(?:in|out))?) ?}, '')
+      values.insert(ind, "-m addrtype --dst-type \"#{types.join(';')}\" ")
+    end
     # the actual rule will have the ! mark before the option.
     values = values.gsub(%r{(!)\s*(-\S+)\s*(\S*)}, '\2 "\1 \3"')
     # we do a similar thing for negated address masks (source and destination).
@@ -512,6 +526,8 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
     end
 
     hash[:ipset] = hash[:ipset].split(';') unless hash[:ipset].nil?
+    hash[:src_type] = hash[:src_type].split(';') unless hash[:src_type].nil?
+    hash[:dst_type] = hash[:dst_type].split(';') unless hash[:dst_type].nil?
 
     ## clean up DSCP class to HEX mappings
     valid_dscp_classes = {
@@ -570,7 +586,6 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
       :destination,
       :dport,
       :dst_range,
-      :dst_type,
       :port,
       :physdev_is_bridged,
       :physdev_is_in,
@@ -579,7 +594,6 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
       :source,
       :sport,
       :src_range,
-      :src_type,
       :state,
     ].each do |prop|
       if hash[prop] && hash[prop].is_a?(Array)
@@ -736,7 +750,7 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
         # ruby 1.8.7 can't .match Symbols ------------------ ^
         resource_value = resource_value.to_s.sub!(%r{^!\s*}, '').to_sym
         args.insert(-2, '!')
-      elsif resource_value.is_a?(Array) && res != :ipset
+      elsif resource_value.is_a?(Array) && ![:ipset, :dst_type, :src_type].include?(res)
         should_negate = resource_value.index do |value|
           # ruby 1.8.7 can't .match symbols
           value.to_s.match(%r{^(!)\s+})
@@ -769,7 +783,7 @@ Puppet::Type.type(:firewall).provide :iptables, parent: Puppet::Provider::Firewa
       end
 
       # ipset can accept multiple values with weird iptables arguments
-      if res == :ipset
+      if [:ipset, :dst_type, :src_type].include?(res)
         resource_value.join(" #{[resource_map[res]].flatten.first} ").split(' ').each do |a|
           if a.sub!(%r{^!\s*}, '')
             # Negate ipset options
